@@ -1,5 +1,9 @@
-use std::{collections::HashMap, fs, mem, path::PathBuf};
 use regex::Regex;
+use std::{
+    collections::HashMap,
+    env, fs, mem,
+    path::{self, PathBuf},
+};
 
 struct RawCommand {
     thread: String,
@@ -32,14 +36,14 @@ struct CompileCommandsEntry {
 }
 
 fn get_raw_commands(log: String) -> Vec<RawCommand> {
-    let mut raw_commands : Vec<RawCommand> = Vec::new();
+    let mut raw_commands: Vec<RawCommand> = Vec::new();
 
     let dir_regexes = vec![
         Regex::new(r"^(\d{4})>BUILDMSG: Processing (.+)$").unwrap(),
         Regex::new(r"^(\d{4})>Compiling (.+) \*+$").unwrap(),
-     ];
+    ];
 
-    let mut dirs : HashMap<String, PathBuf> = HashMap::new();
+    let mut dirs: HashMap<String, PathBuf> = HashMap::new();
 
     enum State {
         LookingForCommand,
@@ -77,7 +81,9 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
                 if line.starts_with(&command_prefix) {
                     cur_command.push(line[5..].trim().to_string());
                 } else {
-                    let cur_dir = dirs.get(&cur_thread).expect(format!("Unable to determine directory for thread {}", cur_thread).as_str());
+                    let cur_dir = dirs.get(&cur_thread).expect(
+                        format!("Unable to determine directory for thread {}", cur_thread).as_str(),
+                    );
                     raw_commands.push(RawCommand {
                         thread: cur_thread.clone(),
                         dir: cur_dir.clone(),
@@ -87,29 +93,46 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
                 }
             }
         }
-
     }
     raw_commands
 }
 
 fn main() {
-    let log = fs::read_to_string("buildfre.log").expect("Failed to read buildfre.log");
+    let args = env::args().collect::<Vec<String>>();
+    if args.len() != 2 {
+        eprintln!("Usage: {} <path to buildfre.log>", args[0]);
+        std::process::exit(1);
+    }
+    let log_path = &args[1];
+    let log = fs::read_to_string(log_path)
+        .expect(format!("Failed to read build.exe log from {}", log_path).as_str());
 
     let raw_commands = get_raw_commands(log);
 
-    let compile_commands : Vec<CompileCommandsEntry> = raw_commands.iter().flat_map(|command| {
-        let full_command = command.full_command();
-        let source_files = command.source_files();
-        // TODO: file should be resolved to an absolute path
-        source_files.into_iter().map(move |source_file| CompileCommandsEntry {
-            directory: command.dir.clone(),
-            command: full_command.clone(),
-            file: source_file,
+    let compile_commands: Vec<CompileCommandsEntry> = raw_commands
+        .iter()
+        .flat_map(|command| {
+            let full_command = command.full_command();
+            let source_files = command.source_files();
+            source_files.into_iter().map(move |source_file| {
+                let joined = command.dir.join(&source_file);
+                let absolute = path::absolute(&joined)
+                    .expect(format!("Failed to resolve path for {}", joined.display()).as_str())
+                    .to_string_lossy()
+                    .to_string();
+                CompileCommandsEntry {
+                    directory: command.dir.clone(),
+                    command: full_command.clone(),
+                    file: absolute,
+                }
+            })
         })
-    }).collect();
+        .collect();
 
     for command in compile_commands {
         println!("Directory: {}", command.directory.display());
         println!("File: {}", command.file);
+        println!("Command: {}", command.command);
+        println!("===============================");
     }
 }
