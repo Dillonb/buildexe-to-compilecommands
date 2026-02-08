@@ -6,7 +6,6 @@ use std::{
 };
 
 struct RawCommand {
-    thread: String,
     dir: PathBuf,
     lines: Vec<String>,
 }
@@ -29,10 +28,30 @@ impl RawCommand {
     }
 }
 
+#[derive(serde::Serialize)]
 struct CompileCommandsEntry {
     directory: PathBuf,
     command: String,
     file: String,
+}
+
+impl CompileCommandsEntry {
+    fn from_raw_command(command: &RawCommand) -> impl Iterator<Item = CompileCommandsEntry> {
+        let full_command = command.full_command();
+        let source_files = command.source_files();
+        source_files.into_iter().map(move |source_file| {
+            let joined = command.dir.join(&source_file);
+            let absolute = path::absolute(&joined)
+                .expect(format!("Failed to resolve path for {}", joined.display()).as_str())
+                .to_string_lossy()
+                .to_string();
+            CompileCommandsEntry {
+                directory: command.dir.clone(),
+                command: full_command.clone(),
+                file: absolute,
+            }
+        })
+    }
 }
 
 fn get_raw_commands(log: String) -> Vec<RawCommand> {
@@ -85,7 +104,6 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
                         format!("Unable to determine directory for thread {}", cur_thread).as_str(),
                     );
                     raw_commands.push(RawCommand {
-                        thread: cur_thread.clone(),
                         dir: cur_dir.clone(),
                         lines: mem::replace(&mut cur_command, Vec::new()),
                     });
@@ -104,6 +122,12 @@ fn main() {
         std::process::exit(1);
     }
     let log_path = &args[1];
+    let absolute_log_path = path::absolute(log_path)
+        .expect(format!("Failed to resolve path for {}", log_path).as_str());
+    let dir_containing_log = absolute_log_path
+        .parent()
+        .expect(format!("Failed to get parent directory of {}", absolute_log_path.display()).as_str());
+    let compile_commands_path = dir_containing_log.join("compile_commands.json");
     let log = fs::read_to_string(log_path)
         .expect(format!("Failed to read build.exe log from {}", log_path).as_str());
 
@@ -111,28 +135,12 @@ fn main() {
 
     let compile_commands: Vec<CompileCommandsEntry> = raw_commands
         .iter()
-        .flat_map(|command| {
-            let full_command = command.full_command();
-            let source_files = command.source_files();
-            source_files.into_iter().map(move |source_file| {
-                let joined = command.dir.join(&source_file);
-                let absolute = path::absolute(&joined)
-                    .expect(format!("Failed to resolve path for {}", joined.display()).as_str())
-                    .to_string_lossy()
-                    .to_string();
-                CompileCommandsEntry {
-                    directory: command.dir.clone(),
-                    command: full_command.clone(),
-                    file: absolute,
-                }
-            })
-        })
+        .flat_map(CompileCommandsEntry::from_raw_command)
         .collect();
 
-    for command in compile_commands {
-        println!("Directory: {}", command.directory.display());
-        println!("File: {}", command.file);
-        println!("Command: {}", command.command);
-        println!("===============================");
-    }
+    // Write the compile commands to a JSON file
+    let json = serde_json::to_string_pretty(&compile_commands)
+        .expect("Failed to serialize compile commands to JSON");
+    fs::write(&compile_commands_path, json).expect(format!("Failed to write compile commands to {}", compile_commands_path.display()).as_str());
+    println!("Successfully wrote compile commands to {}", compile_commands_path.display());
 }
