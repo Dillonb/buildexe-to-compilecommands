@@ -28,7 +28,7 @@ impl RawCommand {
     }
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct CompileCommandsEntry {
     directory: PathBuf,
     command: String,
@@ -115,6 +115,19 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
     raw_commands
 }
 
+fn merge_new_compile_commands(existing: Vec<CompileCommandsEntry>, new: Vec<CompileCommandsEntry>) -> Vec<CompileCommandsEntry> {
+    let mut by_file: HashMap<String, CompileCommandsEntry> = HashMap::new();
+    // Add existing to the map before new, so that new commands will overwrite existing ones for
+    // the same file
+    // This also works to deduplicate
+    for command in existing.into_iter().chain(new.into_iter()) {
+        // TODO: also check if the file exists on disk to remove stale entries
+        println!("File: {}", command.file);
+        by_file.insert(command.file.clone(), command);
+    }
+    by_file.into_values().collect()
+}
+
 fn main() {
     let args = env::args().collect::<Vec<String>>();
     if args.len() != 2 {
@@ -137,6 +150,20 @@ fn main() {
         .iter()
         .flat_map(CompileCommandsEntry::from_raw_command)
         .collect();
+
+    // Read in the existing compile commands, if it exists, and merge with the new commands
+    let existing_commands: Vec<CompileCommandsEntry> = if compile_commands_path.exists() {
+        let existing_json = fs::read_to_string(&compile_commands_path)
+            .expect(format!("Failed to read existing compile commands from {}", compile_commands_path.display()).as_str());
+        serde_json::from_str(&existing_json)
+            .expect(format!("Failed to parse existing compile commands from {}", compile_commands_path.display()).as_str())
+    } else {
+        Vec::new()
+    };
+
+    println!("There are {} existing compile commands and {} new compile commands", existing_commands.len(), compile_commands.len());
+
+    let compile_commands = merge_new_compile_commands(existing_commands, compile_commands);
 
     // Write the compile commands to a JSON file
     let json = serde_json::to_string_pretty(&compile_commands)
