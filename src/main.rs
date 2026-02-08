@@ -122,7 +122,6 @@ fn merge_new_compile_commands(existing: Vec<CompileCommandsEntry>, new: Vec<Comp
     // This also works to deduplicate
     for command in existing.into_iter().chain(new.into_iter()) {
         // TODO: also check if the file exists on disk to remove stale entries
-        println!("File: {}", command.file);
         by_file.insert(command.file.clone(), command);
     }
     by_file.into_values().collect()
