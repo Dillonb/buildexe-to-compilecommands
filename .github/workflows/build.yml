@@ -1,0 +1,60 @@
+name: Rust
+
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: debug
+
+jobs:
+  format:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: cargo-fmt
+        run: cargo fmt --verbose
+
+  clippy:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: cargo-clippy
+        run: cargo clippy -- -Dwarnings
+      - name: cargo-clippy-pedantic
+        continue-on-error: true
+        run: cargo clippy -- -W clippy::pedantic
+
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: cargo-test
+        run: cargo test
+
+  build-windows:
+    runs-on: windows-latest
+    needs: [format, clippy, test]
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --all --release
+
+      - name: Upload to artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: buildexe-to-compilecommands-windows
+          path: target/release/buildexe-to-compilecommands.exe
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            target/release/buildexe-to-compilecommands.exe
+            LICENSE
