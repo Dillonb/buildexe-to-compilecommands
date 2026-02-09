@@ -1,10 +1,11 @@
 use regex::Regex;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env, fs, mem,
     path::{self, PathBuf},
 };
 
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash)]
 struct RawCommand {
     dir: PathBuf,
     lines: Vec<String>,
@@ -54,8 +55,8 @@ impl CompileCommandsEntry {
     }
 }
 
-fn get_raw_commands(log: String) -> Vec<RawCommand> {
-    let mut raw_commands: Vec<RawCommand> = Vec::new();
+fn get_raw_commands(log: String) -> HashSet<RawCommand> {
+    let mut raw_commands: HashSet<RawCommand> = HashSet::new();
 
     let dir_regexes = vec![
         Regex::new(r"^(\d{4})>BUILDMSG: Processing (.+)$").unwrap(),
@@ -103,7 +104,7 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
                     let cur_dir = dirs.get(&cur_thread).unwrap_or_else(|| {
                         panic!("Unable to determine directory for thread {}", cur_thread)
                     });
-                    raw_commands.push(RawCommand {
+                    raw_commands.insert(RawCommand {
                         dir: cur_dir.clone(),
                         lines: mem::take(&mut cur_command),
                     });
@@ -149,9 +150,7 @@ fn main() {
     let log = fs::read_to_string(log_path)
         .unwrap_or_else(|_| panic!("Failed to read build.exe log from {}", log_path));
 
-    let raw_commands = get_raw_commands(log);
-
-    let compile_commands: Vec<CompileCommandsEntry> = raw_commands
+    let compile_commands: Vec<CompileCommandsEntry> = get_raw_commands(log)
         .iter()
         .flat_map(CompileCommandsEntry::from_raw_command)
         .collect();
