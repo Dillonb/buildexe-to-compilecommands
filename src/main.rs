@@ -42,7 +42,7 @@ impl CompileCommandsEntry {
         source_files.into_iter().map(move |source_file| {
             let joined = command.dir.join(&source_file);
             let absolute = path::absolute(&joined)
-                .expect(format!("Failed to resolve path for {}", joined.display()).as_str())
+                .unwrap_or_else(|_| panic!("Failed to resolve path for {}", joined.display()))
                 .to_string_lossy()
                 .to_string();
             CompileCommandsEntry {
@@ -100,12 +100,12 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
                 if line.starts_with(&command_prefix) {
                     cur_command.push(line[5..].trim().to_string());
                 } else {
-                    let cur_dir = dirs.get(&cur_thread).expect(
-                        format!("Unable to determine directory for thread {}", cur_thread).as_str(),
-                    );
+                    let cur_dir = dirs.get(&cur_thread).unwrap_or_else(|| {
+                        panic!("Unable to determine directory for thread {}", cur_thread)
+                    });
                     raw_commands.push(RawCommand {
                         dir: cur_dir.clone(),
-                        lines: mem::replace(&mut cur_command, Vec::new()),
+                        lines: mem::take(&mut cur_command),
                     });
                     state = State::LookingForCommand;
                 }
@@ -138,17 +138,16 @@ fn main() {
     }
     let log_path = &args[1];
     let absolute_log_path = path::absolute(log_path)
-        .expect(format!("Failed to resolve path for {}", log_path).as_str());
-    let dir_containing_log = absolute_log_path.parent().expect(
-        format!(
+        .unwrap_or_else(|_| panic!("Failed to resolve path for {}", log_path));
+    let dir_containing_log = absolute_log_path.parent().unwrap_or_else(|| {
+        panic!(
             "Failed to get parent directory of {}",
             absolute_log_path.display()
         )
-        .as_str(),
-    );
+    });
     let compile_commands_path = dir_containing_log.join("compile_commands.json");
     let log = fs::read_to_string(log_path)
-        .expect(format!("Failed to read build.exe log from {}", log_path).as_str());
+        .unwrap_or_else(|_| panic!("Failed to read build.exe log from {}", log_path));
 
     let raw_commands = get_raw_commands(log);
 
@@ -159,20 +158,18 @@ fn main() {
 
     // Read in the existing compile commands, if it exists, and merge with the new commands
     let existing_commands: Vec<CompileCommandsEntry> = if compile_commands_path.exists() {
-        let existing_json = fs::read_to_string(&compile_commands_path).expect(
-            format!(
+        let existing_json = fs::read_to_string(&compile_commands_path).unwrap_or_else(|_| {
+            panic!(
                 "Failed to read existing compile commands from {}",
                 compile_commands_path.display()
             )
-            .as_str(),
-        );
-        serde_json::from_str(&existing_json).expect(
-            format!(
+        });
+        serde_json::from_str(&existing_json).unwrap_or_else(|_| {
+            panic!(
                 "Failed to parse existing compile commands from {}",
                 compile_commands_path.display()
             )
-            .as_str(),
-        )
+        })
     } else {
         Vec::new()
     };
@@ -188,13 +185,12 @@ fn main() {
     // Write the compile commands to a JSON file
     let json = serde_json::to_string_pretty(&compile_commands)
         .expect("Failed to serialize compile commands to JSON");
-    fs::write(&compile_commands_path, json).expect(
-        format!(
+    fs::write(&compile_commands_path, json).unwrap_or_else(|_| {
+        panic!(
             "Failed to write compile commands to {}",
             compile_commands_path.display()
         )
-        .as_str(),
-    );
+    });
     println!(
         "Successfully wrote compile commands to {}",
         compile_commands_path.display()
