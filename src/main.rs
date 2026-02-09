@@ -115,7 +115,10 @@ fn get_raw_commands(log: String) -> Vec<RawCommand> {
     raw_commands
 }
 
-fn merge_new_compile_commands(existing: Vec<CompileCommandsEntry>, new: Vec<CompileCommandsEntry>) -> Vec<CompileCommandsEntry> {
+fn merge_new_compile_commands(
+    existing: Vec<CompileCommandsEntry>,
+    new: Vec<CompileCommandsEntry>,
+) -> Vec<CompileCommandsEntry> {
     let mut by_file: HashMap<String, CompileCommandsEntry> = HashMap::new();
     // Add existing to the map before new, so that new commands will overwrite existing ones for
     // the same file
@@ -136,9 +139,13 @@ fn main() {
     let log_path = &args[1];
     let absolute_log_path = path::absolute(log_path)
         .expect(format!("Failed to resolve path for {}", log_path).as_str());
-    let dir_containing_log = absolute_log_path
-        .parent()
-        .expect(format!("Failed to get parent directory of {}", absolute_log_path.display()).as_str());
+    let dir_containing_log = absolute_log_path.parent().expect(
+        format!(
+            "Failed to get parent directory of {}",
+            absolute_log_path.display()
+        )
+        .as_str(),
+    );
     let compile_commands_path = dir_containing_log.join("compile_commands.json");
     let log = fs::read_to_string(log_path)
         .expect(format!("Failed to read build.exe log from {}", log_path).as_str());
@@ -152,21 +159,44 @@ fn main() {
 
     // Read in the existing compile commands, if it exists, and merge with the new commands
     let existing_commands: Vec<CompileCommandsEntry> = if compile_commands_path.exists() {
-        let existing_json = fs::read_to_string(&compile_commands_path)
-            .expect(format!("Failed to read existing compile commands from {}", compile_commands_path.display()).as_str());
-        serde_json::from_str(&existing_json)
-            .expect(format!("Failed to parse existing compile commands from {}", compile_commands_path.display()).as_str())
+        let existing_json = fs::read_to_string(&compile_commands_path).expect(
+            format!(
+                "Failed to read existing compile commands from {}",
+                compile_commands_path.display()
+            )
+            .as_str(),
+        );
+        serde_json::from_str(&existing_json).expect(
+            format!(
+                "Failed to parse existing compile commands from {}",
+                compile_commands_path.display()
+            )
+            .as_str(),
+        )
     } else {
         Vec::new()
     };
 
-    println!("There are {} existing compile commands and {} new compile commands", existing_commands.len(), compile_commands.len());
+    println!(
+        "There are {} existing compile commands and {} new compile commands",
+        existing_commands.len(),
+        compile_commands.len()
+    );
 
     let compile_commands = merge_new_compile_commands(existing_commands, compile_commands);
 
     // Write the compile commands to a JSON file
     let json = serde_json::to_string_pretty(&compile_commands)
         .expect("Failed to serialize compile commands to JSON");
-    fs::write(&compile_commands_path, json).expect(format!("Failed to write compile commands to {}", compile_commands_path.display()).as_str());
-    println!("Successfully wrote compile commands to {}", compile_commands_path.display());
+    fs::write(&compile_commands_path, json).expect(
+        format!(
+            "Failed to write compile commands to {}",
+            compile_commands_path.display()
+        )
+        .as_str(),
+    );
+    println!(
+        "Successfully wrote compile commands to {}",
+        compile_commands_path.display()
+    );
 }
