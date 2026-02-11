@@ -1,7 +1,8 @@
+use clap::Parser;
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
-    env, fs, mem,
+    fs, mem,
     path::{self, PathBuf},
 };
 
@@ -131,22 +132,35 @@ fn merge_new_compile_commands(
     by_file.into_values().collect()
 }
 
+#[derive(clap::Parser)]
+struct Args {
+    /// Path to a directory where compile_commands.json should be output or updated
+    #[arg(short, long, default_value_t = String::from("."))]
+    output_dir: String,
+
+    /// Path to the build.exe log file (such as buildfre.log)
+    log_path: String,
+}
+
 fn main() {
-    let args = env::args().collect::<Vec<String>>();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <path to buildfre.log>", args[0]);
-        std::process::exit(1);
+    let args = Args::parse();
+    let log_path = &args.log_path;
+    let output_dir = &args.output_dir;
+
+    let absolute_output_dir = path::absolute(output_dir)
+        .unwrap_or_else(|_| panic!("Failed to resolve path for {}", output_dir));
+
+    // TODO: handle the case where output_dir is a path to a file named compile_commands.json.
+    // in this case, check if the parent exists and is a dir.
+    if !absolute_output_dir.exists() {
+        panic!("Output directory doesn't exist!");
     }
-    let log_path = &args[1];
-    let absolute_log_path = path::absolute(log_path)
-        .unwrap_or_else(|_| panic!("Failed to resolve path for {}", log_path));
-    let dir_containing_log = absolute_log_path.parent().unwrap_or_else(|| {
-        panic!(
-            "Failed to get parent directory of {}",
-            absolute_log_path.display()
-        )
-    });
-    let compile_commands_path = dir_containing_log.join("compile_commands.json");
+
+    if !absolute_output_dir.is_dir() {
+        panic!("Output directory exists, but is not a directory!");
+    }
+
+    let compile_commands_path = absolute_output_dir.join("compile_commands.json");
     let log = fs::read_to_string(log_path)
         .unwrap_or_else(|_| panic!("Failed to read build.exe log from {}", log_path));
 
